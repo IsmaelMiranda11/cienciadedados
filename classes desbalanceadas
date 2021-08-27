@@ -1,0 +1,84 @@
+rand_st = 13
+ratio = 0.99
+X, y = make_classification(n_samples=10000, n_features=2, n_redundant=0, n_clusters_per_class=1, weights=[ratio,1-ratio], flip_y=0, random_state=rand_st) 
+# Proporção
+
+print('Quantidades :', Counter(y))
+print('No exemplo, tem-se :', (len(where(y==1)[0])/len(y))*100, '% casos de interesse' )
+print('Logo, qualquer classificador que acertar :', (len(where(y==0)[0])/len(y))*100, '% dos casos, estará chutando no mais comum' )
+# Nesse caso, a base é desbalanceada
+
+# Criar bases de treino e teste
+# Procedimento comun: separar a base original em treino e teste
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.33, random_state=rand_st) #S1
+# Com isso, tem-se os dados separados. O modelo vai aprender com a base de treino. A performance vai ser avaliada com o teste.
+
+# Undersampling: diminuir a base para balancear as categorias
+# Como fazer? 
+#            Fazer undersampling na base de treino e testar com a base de teste #S2
+#            Fazer undersampling na base original e criar uma base de treino e teste da base undersampled #S3
+X_under_X_train, y_under_y_train = RandomUnderSampler(sampling_strategy=0.4,random_state=rand_st).fit_resample(X_train, y_train) #S2
+
+X_under, y_under = RandomUnderSampler(sampling_strategy=0.4,random_state=rand_st).fit_resample(X,y)
+X_under_train, X_under_test, y_under_train, y_under_test = train_test_split(X_under, y_under, test_size=0.33,random_state=rand_st) #S3
+
+# Oversample: aumentar a base para balancear as categorias
+# Como fazer? 
+#            Fazer oversampling na base de treino e testar com a base de teste #S4
+#            Fazer oversampling na base original e criar uma base de treino e teste da base oversampled #S5
+X_over_X_train, y_over_y_train = SMOTE(sampling_strategy=0.4,random_state=rand_st).fit_resample(X_train, y_train) #S4
+
+X_over, y_over = RandomUnderSampler().fit_resample(X,y)
+X_over_train, X_over_test, y_over_train, y_over_test = train_test_split(X_over, y_over, test_size=0.33,random_state=rand_st) #S5
+
+
+# Treinar os modelos
+# Usar os três modeloes: LR, RF, DT e SVM7
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+lr = LogisticRegression(solver='newton-cg', random_state=rand_st)
+rf = RandomForestClassifier(random_state=rand_st)
+dt = DecisionTreeClassifier(random_state=rand_st)
+svm = SVC()
+
+modelos = {'lr':lr, 'rf':rf, 'dt': dt, 'svm': svm}
+
+treinos = {'Original (S1)': [X_train, y_train], 
+           'Undersample do Train (S2)': [X_under_X_train, y_under_y_train], 
+           'Undersample do Orig (S3)': [X_under_train, y_under_train], 
+           'Oversample do Train (S4)': [X_over_X_train, y_over_y_train],
+           'Oversample do Orig (S5)': [X_over_train, y_over_train]
+           }
+
+testes = {'Original (S1)': [X_test, y_test], 
+           'Undersample do Train (S2)': [X_test, y_test],
+           'Undersample do Orig (S3)': [X_under_test, y_under_test],
+           'Oversample do Train (S4)': [X_test, y_test],
+           'Oversample do Orig (S5)': [X_over_test, y_over_test]
+           }
+
+situacoes = ['Original (S1)', 'Undersample do Train (S2)','Undersample do Orig (S3)','Oversample do Train (S4)', 'Oversample do Orig (S5)']
+
+# Criar um dicionário com os resultados
+i = 0
+di_ = {'Situacao': [], 'Modelo': [], 'Previsoes': [], 'accuracy': [], 'recall': [], 'matrix_confusao': [], 'auc': [], 'cv': [] }
+for sit in situacoes:
+    treino_x, treino_y = treinos[sit]
+    teste_x, teste_y = testes[sit]
+    for nome, modelo in modelos.items():
+        modelo.fit(treino_x, treino_y)
+        pred = modelo.predict(teste_x)
+        di_['Situacao'].append(sit)
+        di_['Modelo'].append(nome)
+        di_['Previsoes'].append(pred)
+        di_['accuracy'].append(accuracy_score(teste_y,pred ))
+        di_['recall'].append(round(recall_score(teste_y,pred),2))
+        di_['matrix_confusao'].append(confusion_matrix(teste_y,pred))
+        di_['auc'].append(round(roc_auc_score(teste_y,pred),4))
+        di_['cv'].append(round(cross_val_score(modelo, treino_x, treino_y, scoring='recall').mean(),4))
+
+    i += 1
+
+pd.DataFrame(di_).drop('Previsoes',axis=1)
